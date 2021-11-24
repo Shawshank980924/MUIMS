@@ -88,6 +88,98 @@ public class UserClientService {
 
 服务端持续监听端口，接收客户端发来的User信息，判断是否账号密码是否符合，并回送Message信息
 
-* 由于存在多个客户端，服务端可能会产生多个socket，同客户端相同需要使用线程来持有不同的socket，同时建立一个`ServerThreadManage`类来管理所有的线程
+* `QQSever`类用于循环监听端口，接收客户端发来的socket输出流拆包判断`userId`和`passwd`是否符合要求，符合要求建立线程，返回成功信息；不符合要求关闭socket
 
-* 账号密码的验证做了简化，没有使用数据库的知识，简单把id和密码固定为一个定值，后期可以通过hashmap储存，或者使用数据库
+* 由于存在多个客户端，服务端可能会产生多个socket，同客户端相同需要使用线程来持有不同的socket，同时建立一个`ServerThreadManage`类来管理所有的线程
+* 账号密码的验证做了简化，没有使用数据库的知识，先简单把id和密码固定为一个定值，然后可以通过`hashmap`储存，或者使用数据库，写一个check函数实现判断
+
+```java
+public boolean checkUser(String userId,String passwd){
+        User user = userList.get(userId);
+        boolean b =false;
+        if(user == null ){
+            System.out.println("用户 "+userId+"不存在");
+        }
+        else{
+            if(user.getPasswd().equals(passwd)){
+                b = true;
+            }
+            else{
+                System.out.println("用户 "+userId+"密码错误");
+            }
+        }
+        return b;
+    }
+```
+
+
+
+* `hashmap`可以优化为`ConcurrentHashMap`线程安全，通过staic属性和静态代码块初始化用户信息
+
+```java
+public class QQServer {
+    private ServerSocket ss = null;
+    //ConcurrentHashMap相比于HashMap是线程安全的
+    private static ConcurrentHashMap<String ,User> userList = new ConcurrentHashMap<>();
+    static {
+        userList.put("张三",new User("张三","12345"));
+        userList.put("李四",new User("李四","12345"));
+        userList.put("王二麻子",new User("王二麻子","12345"));
+        userList.put("小羊Shaun",new User("小羊Shaun","12345"));
+    }
+    
+    public QQServer() {
+        try {
+            //服务器持续监听9999端口
+            ss = new ServerSocket(9999);
+            //需要处理多个客户端的请求，所以是循环接收监听
+            while(true){
+                System.out.println("服务器正在监听9999端口");
+                Socket socket = ss.accept();//接收客户端的传来的socket
+                User user=null;//用于放socket接收的User对象
+                ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());//用于接收socket传输的对象
+                ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());//用于给客户端回送消息
+
+                Message message = new Message();//用于存放发回的消息主体内容
+
+                try {
+                    user = (User) ois.readObject();
+                    message.setReceiver(user.getUserId());
+                    message.setSender("服务端"+ InetAddress.getLocalHost());
+                } catch (ClassNotFoundException e) {
+                    e.printStackTrace();
+                }
+                if(checkUser(user.getUserId(), user.getPasswd())){
+                    //账号密码符合要求则建立线程持有该socket
+                    ServerConnectThread serverConnectThread = new ServerConnectThread(socket, user.getUserId());
+                    ServerThreadManage.addServerConnectThread(user.getUserId(),serverConnectThread);
+                    serverConnectThread.start();
+                    //向客户端传输写入登录成功的信息
+
+                    message.setMessageType(MessageType.MESSAGE_LOGIN_SUCCESS);
+                    message.setContent("userId"+user.getUserId()+"登录成功");
+                    oos.writeObject(message);
+                }else{
+                    //账号密码验证失败返回登录失败信息
+                    System.out.println("userId: "+ user.getUserId()+" passwd: "+user.getPasswd()+"登陆失败");
+                    message.setMessageType(MessageType.MESSAGE_LOGIN_FAIL);
+                    message.setContent("userId"+user.getUserId()+"登录失败");
+                    oos.writeObject(message);
+                    socket.close();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }finally {
+            //若退出了while循环需要关闭服务器的seversocket
+            try {
+                ss.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+```
+
+登录服务写完，项目的基本框架已见雏形，客户端和服务端的通信已经打通
