@@ -29,12 +29,10 @@ public class UserClientService {
         //对象处理流发送user对象到服务端
         ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
         oos.writeObject(user);
-        oos.flush();
-        socket.shutdownOutput();
         //从服务器端接收信息
         ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
         Message message = (Message) ois.readObject();
-        MessageType messageType = message.getMessageType();
+        String messageType = message.getMessageType();
         if(messageType.equals(MessageType.MESSAGE_LOGIN_SUCCESS)){
             //登录成功开启一个线程来持有这个socket持续监听来自服务端发来的信息
             ClientConnectServerThread clientConnectServerThread = new ClientConnectServerThread(socket);

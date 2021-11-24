@@ -11,7 +11,7 @@ public class Message implements Serializable {
     private String receiver;
     private String content;
     private String sendTime;
-    private MessageType messageType;
+    private String messageType;
 
     public String getSender() {
         return sender;
@@ -37,11 +37,11 @@ public class Message implements Serializable {
         this.content = content;
     }
 
-    public MessageType getMessageType() {
+    public String getMessageType() {
         return messageType;
     }
 
-    public void setMessageType(MessageType messageType) {
+    public void setMessageType(String messageType) {
         this.messageType = messageType;
     }
 }

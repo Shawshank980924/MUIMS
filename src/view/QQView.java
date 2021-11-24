@@ -31,11 +31,12 @@ public class QQView {
                     String passwd = "";
                     System.out.print("请输入账号");
                     userId = Utility.readString(10);
+                    System.out.print("请输入密码");
                     passwd = Utility.readString(50);
                     if(userClientService.checkUser(userId,passwd)){
                         String option;
                         //登录成功显示二级菜单
-                        System.out.println("============欢迎(用户"+userId+")登录多用户即时聊天系统");
+                        System.out.println("============欢迎(用户 "+userId+")登录多用户即时聊天系统");
                         System.out.println("===============用户选择菜单================");
                         System.out.println("1:显示用户在线列表");
                         System.out.println("2:私          聊");
