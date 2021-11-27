@@ -1,5 +1,7 @@
 package Service;
 
+
+
 import common.Message;
 import common.MessageType;
 import common.User;
@@ -48,8 +50,6 @@ public class QQServer {
 
 
     public QQServer() {
-
-
         try {
             //服务器持续监听9999端口
             ss = new ServerSocket(9999);
@@ -60,7 +60,6 @@ public class QQServer {
                 User user=null;//用于放socket接收的User对象
                 ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());//用于接收socket传输的对象
                 ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());//用于给客户端回送消息
-
                 Message message = new Message();//用于存放发回的消息主体内容
 
                 try {

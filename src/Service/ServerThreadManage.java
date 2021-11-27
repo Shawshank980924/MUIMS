@@ -15,5 +15,7 @@ public interface ServerThreadManage {
     public  static  ServerConnectThread getServerConnectThread(String userId){
         return threads.get(userId);
     }
-
+    static void deleteServerThread(String userId){
+        threads.remove(userId);
+    }
 }
