@@ -183,3 +183,243 @@ public class QQServer {
 ```
 
 登录服务写完，项目的基本框架已见雏形，客户端和服务端的通信已经打通
+
+## 客户端请求在线用户列表
+
+* 在登录成功后显示二级菜单，客户端向服务端对应的socket请求在线用户列表
+
+* 在`ClientService`中增加`getUserList`方法，向目标socket发送Message对象，增加`MessageType`一个常量`MESSAGE_GET_USER_LIST`
+
+* 服务端线程持有的socket接收Message，拆包判断`MessageType`类型，新建Message，获取`ServerThreadManage`类下的哈希Map，调用`ketset()`方法，遍历key值，连接放入String变量中，空格隔开，作为`Message content`通过socket发回
+
+```java
+if(message.getMessageType().equals(MessageType.MESSAGE_GET_USER_LIST)){
+    System.out.println("服务端接收到客户端"+message.getSender()+"请求拉取在线用户列表");
+    String str = "";
+
+    for (String s : ServerThreadManage.threads.keySet()) {
+        str+=s+" ";
+    }
+```
+
+* 客户端在线程持有的socket获取message拆包，通过split方法分割string，打印输出
+
+```java
+if(message_back.getMessageType().equals(MessageType.MESSAGE_GET_USER_LIST)){
+                        String[] onlineUsers = message_back.getContent().split(" ");
+                        System.out.println("\n========显示在线列表=======");
+                        for (int i = 0; i < onlineUsers.length; i++) {
+                            System.out.println(i+1+" "+onlineUsers[i]);
+                        }
+                    }
+```
+
+## 客户端指定和指定用户iD私聊
+
+* 新建`MessageClientService`类用于处理含content内容的消息相关的服务
+* 该类中新增`PrivateChat`方法，传出`senderid`和`receiverid`和`content`，包装在`Message`对象中，同时标记type类型，通过id在`ManageThread`类中找到相应的线程和对应的socket，最后发送给服务端
+* 服务端简单转发即可
+* 离线用户可以在服务端开一个线程专门循环检查用户是否上线，若上线，再发送过去
+
+```java
+ else if(message.getMessageType().equals(MessageType.MESSAGE_PRIVATE_COMMON)){
+                    //转发信息到目标用户
+                    System.out.println(message.getSender()+"请求和"+message.getReceiver()+"聊天，服务器转发消息");
+                    //扩充功能可以给离线用户留言
+                        System.out.println(message.getReceiver()+"用户现在不在线");
+                        //用户不在，先开一个线程等待用户上线
+                        Runnable waitOnline = new Runnable() {
+                            @Override
+                            public void run() {
+                                //每隔一段时间确认对方是否上线
+                                while(ServerThreadManage.getServerConnectThread(message.getReceiver())==null){
+                                    try {
+                                        Thread.sleep(1000);
+                                    } catch (InterruptedException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                                //上线则发送消息
+                                ObjectOutputStream oos = null;
+                                try {
+                                    oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).getSocket().getOutputStream());
+                                    oos.writeObject(message);
+                                    System.out.println(message.getReceiver()+"用户已经上线，"+message.getSender()+"的留言已经成功发送给目标用户");
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        };
+                        //开启子线程准备用于将消息再用户在线时转发给对方
+                        new Thread(waitOnline).start();
+```
+
+## 客户端和服务端无异常退出
+
+* 在`UserClientService`端增加`quitClient`方法，将包含senderid和`quit`type的message发给服务端
+
+```
+public void quitClient(){
+    Message message = new Message();
+    message.setSender(user.getUserId());
+    message.setMessageType(MessageType.MESSAGE_CLIENT_QUIT);
+    try {
+        ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+        oos.writeObject(message);
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+
+}
+```
+
+* 服务端识别message，回送信息后关闭socket以及服务端对应的线程，并从线程池中删除该线程
+
+```java
+else if(message.getMessageType().equals(MessageType.MESSAGE_CLIENT_QUIT)){
+                    //回送客户端退出消息给客户端
+                    System.out.println("客户端"+message.getSender()+"申请退出");
+                    Message message_back = new Message();
+                    message_back.setMessageType(MessageType.MESSAGE_CLIENT_QUIT);
+                    message_back.setReceiver(message.getSender());
+                    ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+                    oos.writeObject(message_back);
+                    //服务端线程退出,socket关闭，线程池删除该线程
+                    System.out.println("服务端"+message.getSender()+"socket关闭");
+                    ServerThreadManage.deleteServerThread(message.getSender());
+                    socket.close();
+                    oos.close();
+                    break;
+                }
+```
+
+
+
+* 客户端接收到发回的信息，关闭客户端的socket和线程，并从客户端的线程池中删除该线程
+
+```java
+else if(message_back.getMessageType().equals(MessageType.MESSAGE_CLIENT_QUIT)){
+    System.out.println(message_back.getReceiver()+"客户端下socket关闭");
+    ClientThreadManage.deleteThread(message_back.getReceiver());
+    socket.close();
+    ois.close();
+    break;
+}
+```
+
+## 客户端与所有在线用户id群聊
+
+* 在`MessageClientService`中增加`publicChat`方法，将时间，senderid以及receiverid打包传送给服务端，标记为群发消息标记
+
+```java
+public void publicChat(String senderId,String content){
+
+        //将senderid content time 以及type写入message对象
+        Message message = new Message();
+        message.setSender(senderId);
+        message.setMessageType(MessageType.MESSAGE_PUBLIC_COMMON);
+        message.setContent(content);
+        message.setSendTime(new Date().toString());
+        message.setReceiver("所有人");
+        System.out.println(message.getSendTime());
+        System.out.println(message.getSender()+" 对 "+message.getReceiver()+"说："+message.getContent());
+        try {
+            //将message对象发送给服务端
+            ObjectOutputStream oos = new ObjectOutputStream(ClientThreadManage.getThread(senderId).getSocket().getOutputStream());
+            oos.writeObject(message);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+```
+
+* 服务端将消息转发给所有的在线用户，用keyset()方法取出`hashmap`中所有的key，for循环遍历一一发送即可
+
+```java
+else if(message.getMessageType().equals(MessageType.MESSAGE_PUBLIC_COMMON)){
+                    System.out.println(message.getSender()+"申请和"+message.getReceiver()+"发送消息");
+                    ObjectOutputStream oos ;
+                    for (String s : ServerThreadManage.threads.keySet()) {
+                        //碰到自己的线程跳过
+                        if(s.equals(message.getSender()))continue;
+                        oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(s).socket.getOutputStream());
+                        oos.writeObject(message);
+                    }
+                }
+```
+
+## 客户端发送给指定id用户文件
+
+* 通过路径指定文件源地址和目的地址，在Message内容中增加`filePath fileData byteLen `属性
+
+```java
+	private String filePath;//目标文件路径
+    private int byteLen;//文件长度
+    private byte[] fileData;//文件数据保存在字节数组中
+```
+
+
+
+* 在`MessageClientService`增加`fileSend`方法，通过`BufferedInputStream`包装`FileInputSteam`写入byte数组中然后包装在Message对象中发送给服务端
+
+```java
+public void fileSend(String senderId,String receiverId,String localPath,String targetPath){
+        Message message = new Message();
+        //标记为文件消息类型，记录senderid receiverId tagetPath
+        message.setReceiver(receiverId);
+        message.setSender(senderId);
+        message.setMessageType(MessageType.MESSAGE_FILE);
+        message.setFilePath(targetPath);
+        try {
+            BufferedInputStream bufferedInputStream = new BufferedInputStream(new FileInputStream(localPath));
+            ObjectOutputStream oos = new ObjectOutputStream(ClientThreadManage.getThread(senderId).getSocket().getOutputStream());
+
+            //byte数组用于接收文件数据,reaLen记录接收的字节长度
+            int readLen = 0;
+            byte[] bytes = new byte[(int)new File(localPath).length()];
+            if((readLen = bufferedInputStream.read(bytes))!=0) {
+                //将数据字节数组和数组长度的信息包装在message对象中传输给服务端
+                message.setFileDate(bytes);
+                message.setByteLen(readLen);
+                oos.writeObject(message);
+                //关闭文件输入流
+                bufferedInputStream.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+```
+
+
+
+* 服务端做在线判断然后直接中转后，发给目标id用户
+
+```java
+else if(message.getMessageType().equals(MessageType.MESSAGE_FILE)){
+                    System.out.println(message.getSender()+"请求向"+message.getReceiver()+"发送文件");
+                    if(ServerThreadManage.getServerConnectThread(message.getReceiver())!=null){
+                        //若该用户在线的话直接转发即可
+                        ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).socket.getOutputStream());
+                        oos.writeObject(message);
+                    }
+                    else{
+                        System.out.println("用户"+message.getReceiver()+"不在线，无法发送");
+                    }
+                }
+```
+
+* 客户端接收message对象并通过`fileoutputstream`发到目的文件地址
+
+```java
+else if(message_back.getMessageType().equals(MessageType.MESSAGE_FILE)){
+                        //BufferedOutputStream用来写入目标地址
+                        System.out.println("接收到"+message_back.getSender()+"发来的文件数据，文件保存在"+message_back.getFilePath());
+                        BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(new FileOutputStream(message_back.getFilePath()));
+                        bufferedOutputStream.write(message_back.getFileDate(),0,message_back.getByteLen());
+                        //关闭文件输出流
+                        bufferedOutputStream.close();
+                    }
+```
+
