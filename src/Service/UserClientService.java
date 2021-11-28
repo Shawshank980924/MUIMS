@@ -4,14 +4,13 @@ import common.Message;
 import common.MessageType;
 import common.User;
 
-import java.io.FileOutputStream;
+
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.Vector;
+
 
 /**
  * @author 小羊Shaun
@@ -22,7 +21,23 @@ public class UserClientService {
     private User user;
     private Socket socket;
 
-    public boolean checkUser(String userId,String passwd) throws IOException, ClassNotFoundException {
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public Socket getSocket() {
+        return socket;
+    }
+
+    public void setSocket(Socket socket) {
+        this.socket = socket;
+    }
+
+    public boolean checkUser(String userId, String passwd) throws IOException, ClassNotFoundException {
         user = new User(userId,passwd);
         socket = new Socket(InetAddress.getLocalHost(),9999);
         boolean b=false;
@@ -47,4 +62,31 @@ public class UserClientService {
         }
         return b;
     }
+    public void getUserList(){
+        Message message = new Message();
+        message.setMessageType(MessageType.MESSAGE_GET_USER_LIST);
+        message.setSender(user.getUserId());
+        System.out.println(user.getUserId()+"向服务器发送请求拉取在线用户列表");
+        try {
+            ObjectOutputStream oos = new ObjectOutputStream(ClientThreadManage.getThread(user.getUserId()).getSocket().getOutputStream());
+            oos.writeObject(message);
+
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    public void quitClient(){
+        Message message = new Message();
+        message.setSender(user.getUserId());
+        message.setMessageType(MessageType.MESSAGE_CLIENT_QUIT);
+        try {
+            ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+            oos.writeObject(message);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
 }

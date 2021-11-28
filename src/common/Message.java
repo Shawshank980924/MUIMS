@@ -7,11 +7,51 @@ import java.io.Serializable;
  * @version 1.0
  */
 public class Message implements Serializable {
+    public static  final long serialVersionUID = 1L;
     private String sender;
     private String receiver;
     private String content;
     private String sendTime;
     private String messageType;
+    private String filePath;//目标文件路径
+    private int byteLen;//文件长度
+    private byte[] fileData;//文件数据保存在字节数组中
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
+    }
+
+    public int getByteLen() {
+        return byteLen;
+    }
+
+    public void setByteLen(int byteLen) {
+        this.byteLen = byteLen;
+    }
+
+    public byte[] getFileDate() {
+        return fileData;
+    }
+
+    public void setFileDate(byte[] fileDate) {
+        this.fileData = fileDate;
+    }
+
+
+
+    public String getSendTime() {
+        return sendTime;
+    }
+
+    public void setSendTime(String sendTime) {
+        this.sendTime = sendTime;
+    }
+
+
 
     public String getSender() {
         return sender;

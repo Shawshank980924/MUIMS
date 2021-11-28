@@ -14,5 +14,5 @@ public class ClientThreadManage {
     public static ClientConnectServerThread getThread(String userId){
         return threads.get(userId);
     }
-
+    public static void deleteThread(String userId){threads.remove(userId);}
 }
