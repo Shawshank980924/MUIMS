@@ -41,6 +41,7 @@ public class ServerConnectThread extends Thread{
     @Override
     public void run() {
         while(true){
+
             try {
                 System.out.println("服务端与"+userId+"保持通信，持续监听");
                 ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
@@ -125,17 +126,43 @@ public class ServerConnectThread extends Thread{
 
 
                 }
-                //文件的接收需要的
                 else if(message.getMessageType().equals(MessageType.MESSAGE_FILE)){
                     System.out.println(message.getSender()+"请求向"+message.getReceiver()+"发送文件");
-                    if(ServerThreadManage.getServerConnectThread(message.getReceiver())!=null){
-                        //若该用户在线的话直接转发即可
-                        ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).socket.getOutputStream());
-                        oos.writeObject(message);
-                    }
-                    else{
-                        System.out.println("用户"+message.getReceiver()+"不在线，无法发送");
-                    }
+                    //扩充功能可以给离线用户发文件
+                    System.out.println(message.getReceiver()+"用户现在不在线");
+                    //用户不在，先开一个线程等待用户上线
+                    Runnable waitOnline = new Runnable() {
+                        @Override
+                        public void run() {
+                            //每隔一段时间确认对方是否上线
+                            while(ServerThreadManage.getServerConnectThread(message.getReceiver())==null){
+                                try {
+                                    Thread.sleep(1000);
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            //上线则发送文件消息
+                            ObjectOutputStream oos = null;
+                            try {
+                                oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).getSocket().getOutputStream());
+                                oos.writeObject(message);
+                                System.out.println(message.getReceiver()+"用户已经上线，"+message.getSender()+"的文件已经成功发送给目标用户");
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    };
+                    //开启子线程准备用于将消息再用户在线时转发给对方
+                    new Thread(waitOnline).start();
+//                    if(ServerThreadManage.getServerConnectThread(message.getReceiver())!=null){
+//                        //若该用户在线的话直接转发即可
+//                        ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).socket.getOutputStream());
+//                        oos.writeObject(message);
+//                    }
+//                    else{
+//                        System.out.println("用户"+message.getReceiver()+"不在线，无法发送");
+//                    }
                 }
                 else{
                     //

@@ -12,6 +12,7 @@ import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -54,6 +55,40 @@ public class QQServer {
             //服务器持续监听9999端口
             ss = new ServerSocket(9999);
             //需要处理多个客户端的请求，所以是循环接收监听
+            //开启一个线程用于向所有在线用户Id推送消息
+            Runnable NewsSend = new Runnable() {
+                @Override
+                public void run() {
+                    Message message = new Message();
+                    message.setSender("服务端");
+                    message.setMessageType(MessageType.MESSAGE_NEWS);
+
+                    while (!ss.isClosed()){
+                        System.out.println("服务端推送消息服务已启动，请输入想对所有人推送的消息[输入“exit”关闭推送服务]：");
+                        String str = Utility.readString(100);
+                        if(!str.equals("exit")){
+                            //向所有在线的客户端发送消息
+                            message.setContent(str);
+                            message.setSendTime(new Date().toString());
+                            for (String s : ServerThreadManage.threads.keySet()) {
+                                try {
+                                    message.setReceiver(s);
+                                    ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(s).getSocket().getOutputStream());
+                                    oos.writeObject(message);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+
+                        }else {
+                            //退出该线程，关闭推送服务
+                            break;
+                        }
+                    }
+
+                }
+            };
+            new Thread(NewsSend).start();
             while(true){
                 System.out.println("服务器正在监听9999端口");
                 Socket socket = ss.accept();//接收客户端的传来的socket
@@ -90,6 +125,7 @@ public class QQServer {
                     oos.writeObject(message);
                     socket.close();
                 }
+
 
 
             }

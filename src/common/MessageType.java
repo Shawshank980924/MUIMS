@@ -13,5 +13,6 @@ public interface MessageType {
     String MESSAGE_PRIVATE_COMMON= "5";
     String MESSAGE_PUBLIC_COMMON= "6";
     String MESSAGE_FILE= "7";
+    String MESSAGE_NEWS= "8";
 
 }
