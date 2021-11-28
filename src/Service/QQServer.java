@@ -114,6 +114,16 @@ public class QQServer {
                     message.setMessageType(MessageType.MESSAGE_LOGIN_SUCCESS);
                     message.setContent("userId"+user.getUserId()+"登录成功");
                     oos.writeObject(message);
+                    //判断OfflineMessages中是否有发给该用户的离线消息
+                    if(OfflineMessageManage.getMessage(user.getUserId())!=null){
+                        Message offlinemessage = OfflineMessageManage.getMessage(user.getUserId());
+                        //因为上面的oos已经对应了一个ois，而offlinemessage是在线程中重新new一个ois的，这里输出时也要重新new一个，否则回报错
+                        ObjectOutputStream oos_ = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(user.getUserId()).getSocket().getOutputStream());
+                        oos_.writeObject(offlinemessage);
+                        System.out.println("用户"+offlinemessage.getSender()+"给用户"+offlinemessage.getReceiver()+"的离线留言已经发送成功");
+                        //将该离线留言在hashmap中删除
+                        OfflineMessageManage.deleteMessage(user.getUserId());
+                    }
 
 
 
@@ -129,7 +139,7 @@ public class QQServer {
 
 
             }
-        } catch (IOException e) {
+        } catch (IOException  e) {
             e.printStackTrace();
         }finally {
             //若退出了while循环需要关闭服务器的seversocket

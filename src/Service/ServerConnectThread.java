@@ -81,38 +81,44 @@ public class ServerConnectThread extends Thread{
                 else if(message.getMessageType().equals(MessageType.MESSAGE_PRIVATE_COMMON)){
                     //转发信息到目标用户
                     System.out.println(message.getSender()+"请求和"+message.getReceiver()+"聊天，服务器转发消息");
-//                    if(ServerThreadManage.getServerConnectThread(message.getReceiver())!=null){
-//                        ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).getSocket().getOutputStream());
-//
-//                        oos.writeObject(message);
-//                    }
-                    //扩充功能可以给离线用户留言
-                        System.out.println(message.getReceiver()+"用户现在不在线");
-                        //用户不在，先开一个线程等待用户上线
-                        Runnable waitOnline = new Runnable() {
-                            @Override
-                            public void run() {
-                                //每隔一段时间确认对方是否上线
-                                while(ServerThreadManage.getServerConnectThread(message.getReceiver())==null){
-                                    try {
-                                        Thread.sleep(1000);
-                                    } catch (InterruptedException e) {
-                                        e.printStackTrace();
-                                    }
-                                }
-                                //上线则发送消息
-                                ObjectOutputStream oos = null;
-                                try {
-                                    oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).getSocket().getOutputStream());
-                                    oos.writeObject(message);
-                                    System.out.println(message.getReceiver()+"用户已经上线，"+message.getSender()+"的留言已经成功发送给目标用户");
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                        };
-                        //开启子线程准备用于将消息再用户在线时转发给对方
-                        new Thread(waitOnline).start();
+                    if(ServerThreadManage.getServerConnectThread(message.getReceiver())!=null){
+                        //用户在线上，直接转发
+                        ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).getSocket().getOutputStream());
+
+                        oos.writeObject(message);
+                    }
+                    else{
+                        //若还未上线，先存放在OfflineMessages 中
+                        System.out.println("用户"+message.getReceiver()+"还未上线，暂存在服务器端");
+                        OfflineMessageManage.addOfflineMessage(message.getReceiver(),message);
+                    }
+//                    //扩充功能可以给离线用户留言
+//                        System.out.println(message.getReceiver()+"用户现在不在线");
+//                        //用户不在，先开一个线程等待用户上线
+//                        Runnable waitOnline = new Runnable() {
+//                            @Override
+//                            public void run() {
+//                                //每隔一段时间确认对方是否上线
+//                                while(ServerThreadManage.getServerConnectThread(message.getReceiver())==null){
+//                                    try {
+//                                        Thread.sleep(1000);
+//                                    } catch (InterruptedException e) {
+//                                        e.printStackTrace();
+//                                    }
+//                                }
+//                                //上线则发送消息
+//                                ObjectOutputStream oos = null;
+//                                try {
+//                                    oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).getSocket().getOutputStream());
+//                                    oos.writeObject(message);
+//                                    System.out.println(message.getReceiver()+"用户已经上线，"+message.getSender()+"的留言已经成功发送给目标用户");
+//                                } catch (IOException e) {
+//                                    e.printStackTrace();
+//                                }
+//                            }
+//                        };
+//                        //开启子线程准备用于将消息再用户在线时转发给对方
+//                        new Thread(waitOnline).start();
                 }
                 else if(message.getMessageType().equals(MessageType.MESSAGE_PUBLIC_COMMON)){
                     System.out.println(message.getSender()+"申请和"+message.getReceiver()+"发送消息");
