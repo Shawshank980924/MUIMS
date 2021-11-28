@@ -41,6 +41,8 @@
 
 在登录账号的阶段需要将账号和密码打包到User对象中通过对象处理流输出到Socket中给服务器进行验证，需要实现以下功能：
 
+* 客户端和服务端增加了一个Common包用于储存通过socket传输的共享类，需要注意这两个包内的类的定义方法属性必须保持相同，否则将导致无法对Message对象拆包
+
 * 增加一个Service包用于为客户端提供服务
 * 增加账号验证服务类`UserConnectService`用于处理验证账号密码
 
@@ -394,20 +396,36 @@ public void fileSend(String senderId,String receiverId,String localPath,String t
 
 
 
-* 服务端做在线判断然后直接中转后，发给目标id用户
+* 服务端做在线判断然后直接中转后，发给目标id用户，若离线开启一个线程循环判断是否上线，上线后发给目标id用户
 
 ```java
 else if(message.getMessageType().equals(MessageType.MESSAGE_FILE)){
                     System.out.println(message.getSender()+"请求向"+message.getReceiver()+"发送文件");
-                    if(ServerThreadManage.getServerConnectThread(message.getReceiver())!=null){
-                        //若该用户在线的话直接转发即可
-                        ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).socket.getOutputStream());
-                        oos.writeObject(message);
-                    }
-                    else{
-                        System.out.println("用户"+message.getReceiver()+"不在线，无法发送");
-                    }
-                }
+                    //用户不在，先开一个线程等待用户上线
+                    Runnable waitOnline = new Runnable() {
+                        @Override
+                        public void run() {
+                            //每隔一段时间确认对方是否上线
+                            while(ServerThreadManage.getServerConnectThread(message.getReceiver())==null){
+                                try {
+                                    Thread.sleep(1000);
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            //上线则发送文件消息
+                            ObjectOutputStream oos = null;
+                            try {
+                                oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(message.getReceiver()).getSocket().getOutputStream());
+                                oos.writeObject(message);
+                                System.out.println(message.getReceiver()+"用户已经上线，"+message.getSender()+"的文件已经成功发送给目标用户");
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    };
+                    //开启子线程准备用于将消息再用户在线时转发给对方
+                    new Thread(waitOnline).start();
 ```
 
 * 客户端接收message对象并通过`fileoutputstream`发到目的文件地址
@@ -421,5 +439,107 @@ else if(message_back.getMessageType().equals(MessageType.MESSAGE_FILE)){
                         //关闭文件输出流
                         bufferedOutputStream.close();
                     }
+```
+
+## 服务端推送消息给所有客户端
+
+* 服务端在`QQServer`中开启一个线程专门用于给其他的客户端推送消息，输入信息后包装为message对象，通过遍历线程key锁定对应的socket，发送即可
+
+```java
+Runnable NewsSend = new Runnable() {
+                @Override
+                public void run() {
+                    Message message = new Message();
+                    message.setSender("服务端");
+                    message.setMessageType(MessageType.MESSAGE_NEWS);
+                    while (!ss.isClosed()){
+                        System.out.println("服务端推送消息服务已启动，请输入想对所有人推送的消息[输入“exit”关闭推送服务]：");
+                        String str = Utility.readString(100);
+                        if(!str.equals("exit")){
+                            //向所有在线的客户端发送消息
+                            message.setContent(str);
+                            message.setSendTime(new Date().toString());
+                            for (String s : ServerThreadManage.threads.keySet()) {
+                                try {
+                                    message.setReceiver(s);
+                                    ObjectOutputStream oos = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(s).getSocket().getOutputStream());
+                                    oos.writeObject(message);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        }else {
+                            //退出该线程，关闭推送服务
+                            break;
+                        }
+                    }
+                }
+            };
+            new Thread(NewsSend).start();
+```
+
+
+
+* 在`MessageType`中增加`MESSAGRE_NEWS`类，客户端接收message对象后直接打印信息即可
+
+```java
+else if(message_back.getMessageType().equals(MessageType.MESSAGE_NEWS)){
+                        System.out.println(message_back.getSendTime());
+                        System.out.print("接收到服务端推送给"+message_back.getReceiver()+"的消息：");
+                        System.out.println(message_back.getContent());
+                    }
+```
+
+## 一些优化
+
+关于离线发送文件和离线留言的实现方式，我采用了再开一个线程，但是这样对cpu资源的占用过高，若用户持续不在线，线程将一直占用，视频中老师在服务器端开了离线message对象的`hashmap`，每当有一个用户登录验证后同时在`hashmap`中寻找是否存在关于他的离线留言
+
+这里我把离线消息的部分优化了一下
+
+* 服务端增加`OfflineMessageManage`的类，hashmap用于管理离线消息，注意这里只支持一个id放一个离线消息
+
+```java
+public interface OfflineMessageManage {
+    static ConcurrentHashMap<String, Message> offlineMessages = new ConcurrentHashMap<>();
+    public static void addOfflineMessage(String receiverId,Message message){
+        offlineMessages.put(receiverId,message);
+    }
+    static void deleteMessage(String receiverId){
+        offlineMessages.remove(receiverId);
+    }
+    static Message getMessage(String receiverId){
+        return
+                offlineMessages.get(receiverId);
+    }
+}
+```
+
+
+
+* `ServerThread`的run方法中判断是否在线，不在线放入`hashmap`中
+* 在`QQSever()`方法中验证账号发送成功Message对象后，判断`hashmap`中是否存在该id的离线消息，若存在直接进行一个转发，注意要重新new一个输出流，不可用之前验证成功登录的输出流
+
+```java
+if(checkUser(user.getUserId(), user.getPasswd())){
+                    //账号密码符合要求则建立线程持有该socket
+                    ServerConnectThread serverConnectThread = new ServerConnectThread(socket, user.getUserId());
+                    ServerThreadManage.addServerConnectThread(user.getUserId(),serverConnectThread);
+                    serverConnectThread.start();
+                    //向客户端传输写入登录成功的信息
+
+                    message.setMessageType(MessageType.MESSAGE_LOGIN_SUCCESS);
+                    message.setContent("userId"+user.getUserId()+"登录成功");
+                    oos.writeObject(message);
+                    //判断OfflineMessages中是否有发给该用户的离线消息
+                    if(OfflineMessageManage.getMessage(user.getUserId())!=null){
+                        Message offlinemessage = OfflineMessageManage.getMessage(user.getUserId());
+                        //因为上面的oos已经对应了一个ois，而offlinemessage是在线程中重新new一个ois的，这里输出时也要重新new一个，否则回报错
+                        ObjectOutputStream oos_ = new ObjectOutputStream(ServerThreadManage.getServerConnectThread(user.getUserId()).getSocket().getOutputStream());
+                        oos_.writeObject(offlinemessage);
+                        System.out.println("用户"+offlinemessage.getSender()+"给用户"+offlinemessage.getReceiver()+"的离线留言已经发送成功");
+                        //将该离线留言在hashmap中删除
+                        OfflineMessageManage.deleteMessage(user.getUserId());
+                    }
+                }
 ```
 
